@@ -1,0 +1,159 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Nanjundamurthy Rachana"
+date: "March 25, 2016"
+output: html_document
+---
+
+**Background:**
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+**Goal of the Project**
+
+The goal of this project is to predict the manner in which they did the exercise. For this, we consider the "classe" variable in the training set. We are now going to any of the other variables to predict with. As part of this project, we will also create a report on how we built the model, on how we used cross validation, and also arrive at some conclusions on the out of sample error, reason for the choice.We will then apply our prediction model to predict 20 different test cases.
+
+**Data**
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+Loading all the required libraries:
+
+```{r, echo = TRUE}
+library(AppliedPredictiveModeling)
+library(caret)
+library(ggplot2)
+library(randomForest)
+```
+
+Now, let us look at downloading our training and testing data. 
+
+```{r, echo = TRUE}
+if(!file.exists("pml-training.csv"))
+  {
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")
+}
+
+if(!file.exists("pml-testing.csv"))
+{
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+}
+
+training <- read.csv("pml-training.csv", sep = ",", na.strings = c("", "NA"))
+testing <- read.csv("pml-testing.csv", sep = ",", na.strings = c("", "NA"))
+```
+
+***Cleaning the Data***
+
+Let us now look at a few rows of the data
+```{r, echo = TRUE}
+##head(training)
+##head(testing)
+```
+
+Let us now compare the two data sets
+```{r, echo = TRUE}
+colNamesTest <- colnames(testing)
+colNamesTrain <- colnames(training)
+all.equal(colNamesTrain[1:length(colNamesTrain) - 1], colNamesTest[1:length(colNamesTest) - 1])
+```
+
+Splitting our data into training and validation data sets to build a model:
+
+```{r, echo = TRUE}
+set.seed(10)
+inTrain <- createDataPartition(y = training$classe, p = 0.7, list = FALSE)
+train1 <- training[inTrain, ]
+valid1 <- training[-inTrain, ]
+```
+
+*Feature Removal*
+
+Let us now remove the features with NAs and nearly zero variance, variables that almost always NA and variables that do not seem to impact the prediction. For this, let us do this on the training data train1 and apply the same to validation data valid1.
+
+```{r, echo = TRUE}
+nonZero <- nearZeroVar(train1)
+train1 <- train1[, -nonZero]
+valid1 <- valid1[, -nonZero]
+```
+
+Let us now remove the near NAs 
+
+```{r, echo = TRUE}
+NAs <- sapply(train1, function(x) mean(is.na(x))) > 0.95
+train1 <- train1[, NAs == FALSE]
+valid1 <- valid1[, NAs == FALSE]
+train1 <- train1[, -(1:5)]
+valid1 <- valid1[, -(1:5)]
+```
+
+By doing this, we are removing the time stamp and other variables like User Name which will not impact our analysis. 
+
+
+***Model Building***
+
+First, let us apply the Random Forest Model with 3- fold cross validation. 
+This will help us in estimating the optimal tuning parameters for the model. 
+
+```{r, echo = TRUE}
+fitC <- trainControl(method = "cv", number = 3, verboseIter = FALSE)
+fit <- train(classe ~ ., data = train1, method = "rf", trControl = fitC)
+fit
+```
+
+**Model Selection and Evaluation**
+
+Let us now apply the model to the validation data valid1. We will then compare the actuals with our predicted values using the Confusion Matrix. 
+
+```{r, echo = TRUE}
+predfit <- predict(fit, newdata = valid1)
+confusionMatrix(valid1$classe, predfit)
+```
+
+The accuracy of the model is very high, 99%. Hence we will now proceed with this model and apply to our testing data as well. 
+
+
+**Re-running the Model on Testing Data**
+
+We can continue and apply the Random Forest Model for our testing dataset. First, we need to get back our training data set, as we had reduced the training dataset. So, we will apply the method of reduction starting from the training data. 
+
+```{r, echo = TRUE}
+nonZero <- nearZeroVar(training)
+train1 <- training[, -nonZero]
+test1 <- testing[, -nonZero]
+NAs <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training <- training[, NAs == FALSE]
+testing <- testing[, NAs == FALSE]
+training <- training[, -(1:5)]
+testing <- testing[, -(1:5)]
+```
+
+**Predicting on the Testing data**
+
+```{r, echo = TRUE}
+fitC <- trainControl(method = "cv", number = 3, verboseIter = FALSE)
+fit <- train(classe ~ ., data = training, method = "rf", trControl = fitC)
+predfit <- predict(fit, newdata = testing)
+```
+
+let us now convert the predictions to character
+
+```{r, echo = TRUE}
+predChar <- as.character(predfit)
+predChar
+```
+
+Let us now write a file with the Predictions
+```{r, echo = TRUE}
+for(i in seq(20))
+  {
+    filename <- paste("problem_id_",i, ".txt", sep = "_")
+    write.table(predfit[i], file = filename, quote = FALSE, row.names = FALSE, col.names = FALSE)
+}
+```
